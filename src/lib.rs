@@ -215,10 +215,10 @@ pub struct Kif{
 }impl Kif {
     ///from_vec for test
     pub fn t_from_vec(kif:TKif) -> Self {
-        Kif { kif, map: Board::normal() }
+        Self { kif, map: Board::normal() }
     }
     pub fn with_board(kif:TKif, board:Board) -> Self {
-        Kif { kif, map: board }
+        Self { kif, map: board }
     }
     pub fn new(path:&str) -> Result<Self,Box<dyn std::error::Error>> {
         let (_options,moves) = read::read_kif(path, read::Opt::default())?;
@@ -231,7 +231,7 @@ mod tests {
     use crate::read;
     type TestRes<E> = Result<(),Box<E>>;
     #[test] fn test_read() -> TestRes<dyn std::error::Error> {
-        let readed = read::read_kif(r".\data\kif2.kif", read::Opt::default())?;
+        let readed = read::read_kif(r".\data\kif1.kif2", read::Opt::default())?;
         println!("{:#?}",readed.1);
         Ok(())
     }

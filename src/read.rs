@@ -96,14 +96,17 @@ fn sep_move(m_in:&str) -> Option<Move> {
     Some(Move { from, to, do_promot:_do_promot })
 }
 
+const MOVES_PREV:&str = "手数----指手---------消費時間--";
+
 pub(crate) fn read_kif(path:&str,opt:Opt) -> Result<(HashMap<String,String>,Vec<Move>),Box<dyn std::error::Error>> {
     let (separator,read_sect) = opt.open_all();
     let mut ret:HashMap<String,String> = HashMap::new();
     let mut it = BufReader::new(File::open(path)?).lines();
-    let mut last_line:String = String::from("中断");
+    let mut last_line:String = String::from("pass");
     'out: for l_res in &mut it {
         let l = l_res?;
-        if l.starts_with("1") { last_line = l; break 'out; }
+        if l.starts_with(MOVES_PREV) { break 'out; }
+        if l.starts_with("  1") { last_line = l; break 'out; }
         if l.starts_with("#") { continue 'out; }
         let mut is_matched = false;
         for sect in read_sect.iter(){ if l.starts_with(sect){ is_matched = true; break; } }
@@ -115,9 +118,12 @@ pub(crate) fn read_kif(path:&str,opt:Opt) -> Result<(HashMap<String,String>,Vec<
         );
     }
     let mut moves:Vec<Move> = Vec::new();
-    match sep_move(&last_line) {
-        Some(val) => {moves.push(val);},
-        None => {return Ok((ret,moves));}
+    if last_line != "pass" {
+        let _1 = sep_move(&last_line);
+        match _1 {
+            Some(val) => {moves.push(val);},
+            None => {return Ok((ret,moves));}
+        }
     }
     for l_res in it {
         let l = l_res?;
