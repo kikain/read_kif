@@ -19,6 +19,7 @@ pub struct Opt{
 
 fn sep_move(m_in:&str) -> Option<Move> {
     let mut _m:Vec<char> = m_in.chars().collect();
+    _m = _m[3..].to_vec();
     match _m[0]{
         '中' => { return None; }, //中断
         '投' => { return None; }, //投了
@@ -68,7 +69,7 @@ fn sep_move(m_in:&str) -> Option<Move> {
                 if let Some(x) = c.to_digit(10){
                     x as usize
                 }else {
-                    panic!("{}",c)
+                    panic!("char: {}",c)
                 }
             }
         };
@@ -98,7 +99,7 @@ fn sep_move(m_in:&str) -> Option<Move> {
 
 const MOVES_PREV:&str = "手数----指手---------消費時間--";
 
-pub(crate) fn read_kif(path:&str,opt:Opt) -> Result<(HashMap<String,String>,Vec<Move>),Box<dyn std::error::Error>> {
+pub(crate) fn read_kif(path:&str,opt:Opt) -> Result<(HashMap<String,String>,TKif),Box<dyn std::error::Error>> {
     let (separator,read_sect) = opt.open_all();
     let mut ret:HashMap<String,String> = HashMap::new();
     let mut it = BufReader::new(File::open(path)?).lines();
@@ -106,7 +107,7 @@ pub(crate) fn read_kif(path:&str,opt:Opt) -> Result<(HashMap<String,String>,Vec<
     'out: for l_res in &mut it {
         let l = l_res?;
         if l.starts_with(MOVES_PREV) { break 'out; }
-        if l.starts_with("  1") { last_line = l; break 'out; }
+        if l.trim_start().starts_with("1") { last_line = l; break 'out; }
         if l.starts_with("#") { continue 'out; }
         let mut is_matched = false;
         for sect in read_sect.iter(){ if l.starts_with(sect){ is_matched = true; break; } }
@@ -117,9 +118,9 @@ pub(crate) fn read_kif(path:&str,opt:Opt) -> Result<(HashMap<String,String>,Vec<
             it1.next().unwrap().to_string()
         );
     }
-    let mut moves:Vec<Move> = Vec::new();
+    let mut moves:TKif = Vec::new();
     if last_line != "pass" {
-        let _1 = sep_move(&last_line);
+        let _1 = sep_move(&last_line.trim_start());
         match _1 {
             Some(val) => {moves.push(val);},
             None => {return Ok((ret,moves));}
@@ -127,7 +128,7 @@ pub(crate) fn read_kif(path:&str,opt:Opt) -> Result<(HashMap<String,String>,Vec<
     }
     for l_res in it {
         let l = l_res?;
-        match sep_move(&l) {
+        match sep_move(&l.trim_start()) {
             Some(val) => {moves.push(val);},
             None => {return Ok((ret,moves));}
         }

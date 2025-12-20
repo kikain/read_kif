@@ -210,8 +210,8 @@ pub struct Board{
 
 pub type TKif = Vec<Move>;
 pub struct Kif{
-    kif:TKif,
-    map:Board,
+    pub kif:TKif,
+    pub(crate) map:Board,
 }impl Kif {
     ///from_vec for test
     pub fn t_from_vec(kif:TKif) -> Self {
