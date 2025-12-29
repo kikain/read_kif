@@ -1,4 +1,4 @@
-mod read;
+mod reader;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default,Hash)]
 pub enum PieceEnum{
@@ -336,7 +336,7 @@ pub struct Kif{
         Self { kif, map: board }
     }
     pub fn new(path:&str) -> Result<Self,Box<dyn std::error::Error>> {
-        let (_options,moves) = read::read_kif(path, read::Opt::default())?;
+        let (_options,moves) = reader::read_kif(path, reader::Opt::default())?;
         Ok(Self::t_from_vec(moves))
     }
     pub fn search(pat:KifSearchPattern) {
@@ -346,10 +346,10 @@ pub struct Kif{
 
 #[cfg(test)]
 mod tests {
-    use crate::read;
+    use crate::reader;
     type TestRes<E> = Result<(),Box<E>>;
     #[test] fn test_read() -> TestRes<dyn std::error::Error> {
-        let readed = read::read_kif(r".\data\kif1.kif2", read::Opt::default())?;
+        let readed = reader::read_kif(r".\data\kif1.kif2", reader::Opt::default())?;
         println!("{:#?}",readed.1);
         Ok(())
     }
