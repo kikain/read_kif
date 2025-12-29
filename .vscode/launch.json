@@ -5,6 +5,19 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Debug executable 'read_kif_case'",
+            "type": "lldb",
+            "request": "launch",
+            "cargo": {
+                "args": [
+                    "run",
+                    "--bin=read_kif_case"
+                ]
+            },
+            "args": []
+        },
+        
+        {
             "name": "Debug unit tests in library 'read_kif_case'",
             "type": "lldb",
             "request": "launch",

@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 mod read;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default,Hash)]
@@ -14,6 +12,35 @@ pub enum PieceEnum{
     Hisha,
     Kaku,
     Pawn,
+}impl ToString for PieceEnum {
+    fn to_string(&self) -> String {
+        use PieceEnum::*;
+        match self {
+            Empty => "Empty".to_string(),
+            King => "King".to_string(),
+            Gold => "Gold".to_string(),
+            Silver => "Silver".to_string(),
+            Knight => "Knight".to_string(),
+            Spear => "Spear".to_string(),
+            Hisha => "Hisha".to_string(),
+            Kaku => "Kaku".to_string(),
+            Pawn => "Pawn".to_string(),
+        }
+    }
+}impl PieceEnum {
+    fn _get_piece_heads() -> [char;9] {
+        [
+            'E',
+            'K',
+            'G',
+            'S',
+            'K',
+            'S',
+            'H',
+            'K',
+            'P',
+        ]
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -61,11 +88,90 @@ pub struct Move{
 }impl Move {
 }
 
+pub enum PM {
+    Plus,
+    Minus
+}
+
+#[derive(Debug,Clone,/*Copy,*/)]
+pub struct Hased {
+    pub king: u32,
+    pub gold: u32,
+    pub silver: u32,
+    pub knight: u32,
+    pub spear: u32,
+    pub hisha: u32,
+    pub kaku: u32,
+    pub pawn: u32,
+}impl Default for Hased {
+    fn default() -> Self {
+        Hased {
+            king: 0,
+            gold: 0,
+            silver: 0,
+            knight: 0,
+            spear: 0,
+            hisha: 0,
+            kaku: 0,
+            pawn: 0
+        }
+    }
+}impl Hased {
+    pub fn get(&self,key:PieceEnum) -> u32 {
+        use PieceEnum::*;
+        match key {
+            Empty => panic!("hased in not 'Empty'"),
+            King => self.king,
+            Gold => self.gold,
+            Silver => self.silver,
+            Knight => self.knight,
+            Spear => self.spear,
+            Hisha => self.hisha,
+            Kaku => self.kaku,
+            Pawn => self.pawn,
+        }
+    }
+    // Adjust a u32 field by a signed i32 value safely (no wrapping).
+    fn adjust_count(field: &mut u32, val: i32) {
+        let tmp = *field as i64 + val as i64;
+        if tmp < 0 {
+            panic!("attempt to set negative hased count: {}", tmp);
+        }
+        if tmp > u32::MAX as i64 {
+            panic!("attempt to overflow hased count: {}", tmp);
+        }
+        *field = tmp as u32;
+    }
+    // Moves the specified number of frames up or down.
+    // You'll probably use it like this:
+    // ```rust
+    // let has = Hased::default();
+    // has.inc(PieceEnum::Knight,+1);
+    // assert_eq!(has.get(PieceEnum::Knight),1)
+    // has.pawn = 2
+    // assert_
+    // ```
+    pub fn inc(&mut self,key:PieceEnum,val:i32){
+        use PieceEnum::*;
+        match key {
+            Empty => panic!("hased in not 'Empty'"),
+            King => Self::adjust_count(&mut self.king, val),
+            Gold => Self::adjust_count(&mut self.gold, val),
+            Silver => Self::adjust_count(&mut self.silver, val),
+            Knight => Self::adjust_count(&mut self.knight, val),
+            Spear => Self::adjust_count(&mut self.spear, val),
+            Hisha => Self::adjust_count(&mut self.hisha, val),
+            Kaku => Self::adjust_count(&mut self.kaku, val),
+            Pawn => Self::adjust_count(&mut self.pawn, val),
+        }
+    }
+}
+
 pub type TBoard = [[Piece;9];9];
 pub struct Board{
     pub board:TBoard,
-    pub has_down:HashMap<PieceEnum,i32>,
-    pub has_up:HashMap<PieceEnum,i32>,
+    pub has_down:Hased,
+    pub has_up:Hased,
 }impl Default for Board {
     fn default() -> Self {
         Board::empty()
@@ -85,8 +191,8 @@ pub struct Board{
     pub fn empty() -> Self {
         Board {
             board: [[Piece::default(); 9]; 9],
-            has_down: HashMap::new(),
-            has_up: HashMap::new()
+            has_down: Hased::default(),
+            has_up: Hased::default()
         }
     }
     pub fn normal() -> Self {
@@ -153,8 +259,8 @@ pub struct Board{
                     Piece::new_b(Spear,true),
                 ],
             ],
-            has_down: HashMap::new(),
-            has_up: HashMap::new()
+            has_down: Hased::default(),
+            has_up: Hased::default(),
         }
     }
     pub fn next(&mut self,m:&Move) -> Self {
@@ -171,11 +277,10 @@ pub struct Board{
 
         // 捕獲があれば持ち駒に加算
         if captured != PieceEnum::Empty {
-            // <!> get self piece
             if moving.is_down {
-                *self.has_up.entry(captured).or_insert(0) += 1;
+                self.has_up.inc(captured, 1);
             } else {
-                *self.has_down.entry(captured).or_insert(0) += 1;
+                self.has_down.inc(captured, 1);
             }
         }
 
@@ -195,11 +300,15 @@ pub struct Board{
         match pos {
             MovePos::Board(xy) => { self.board[xy.x][xy.y] = item; },
             MovePos::Hased(p) => {
-                // too if{} to else{}
-                if p.is_down {
-                    self.has_down.insert(p.piece,self.has_down[&p.piece]+if let PieceEnum::Empty = item.piece {-1} else {1});
+                let val = if let PieceEnum::Empty = p.piece {
+                    -1
                 } else {
-                    self.has_up.insert(p.piece,self.has_up[&p.piece]-1);
+                    1
+                };
+                if p.is_down {
+                    self.has_down.inc(p.piece, val);
+                } else {
+                    self.has_up.inc(p.piece, val);
                 }
             }
         }
@@ -207,6 +316,12 @@ pub struct Board{
     // さらに別のプリセットがあれば同様に関数を追加できます（compact(), handicap(), ...）
 }
 
+pub struct KifSearchPattern {
+    rect: Option<Vec<Vec<Piece>>>,
+    hased: Option<[Hased;2]>
+}
+
+pub type KifPat = KifSearchPattern;
 
 pub type TKif = Vec<Move>;
 pub struct Kif{
@@ -223,6 +338,9 @@ pub struct Kif{
     pub fn new(path:&str) -> Result<Self,Box<dyn std::error::Error>> {
         let (_options,moves) = read::read_kif(path, read::Opt::default())?;
         Ok(Self::t_from_vec(moves))
+    }
+    pub fn search(pat:KifSearchPattern) {
+        todo!("struct befor")
     }
 }
 
