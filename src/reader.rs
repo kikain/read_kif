@@ -143,7 +143,7 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
     }
     // 移動先
     let to: Pos;
-    let mut _piece_ch;
+    let mut _piece_ch = None;
     {
         match _ch {
             '▲' | '△' => {
@@ -184,7 +184,7 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
                 if let Some(x) = c.to_digit(10) {
                     x as usize
                 } else if PieceEnum::_get_piece_heads().contains(&c) {
-                    _piece_ch = c;
+                    _piece_ch = Some(c);
                     prev_pos.y
                 } else {
                     return Err(Invalid(ToY, m_in));
@@ -196,7 +196,10 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
     // 移動する駒
     let _piece: PieceEnum;
     {
-        let _ch = it_c.next().ok_or_else(|| NotFound(Piece, m_in))?;
+        let _ch = match _piece_ch {
+            None => it_c.next().ok_or_else(|| NotFound(Piece, m_in))?,
+            Some(c) => c,
+        };
         use PieceEnum::*;
         _piece = match _ch {
             '玉' => King,
@@ -218,11 +221,11 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
         }
     }
     // 装飾子
-    let mut _do_promotion: bool = false;
+    let mut do_promotion: bool = false;
     let _ch = it_c.next().ok_or_else(|| NotFound(Decorator, m_in))?;
     match _ch {
         '成' => {
-            _do_promotion = true;
+            do_promotion = true;
             it_c.next();
         }
         '打' => {
@@ -247,7 +250,7 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
     Ok(SepMoveRet::Board(Move {
         from,
         to,
-        do_promotion: _do_promotion,
+        do_promotion,
     }))
 }
 

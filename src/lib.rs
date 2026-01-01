@@ -343,8 +343,8 @@ mod tests {
 
     #[test]
     fn test_read() -> TestRes<dyn std::error::Error> {
-        let readed = reader::read_kif(r".\data\kif1.kif2", &reader::Opt::default())?;
-        println!("{:#?}", readed.1);
+        let (_ops, kif) = reader::read_kif(r".\data\kif1.kif2", &reader::Opt::default())?;
+        println!("{:#?}", kif);
         Ok(())
     }
 
