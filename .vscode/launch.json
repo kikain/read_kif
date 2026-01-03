@@ -5,23 +5,23 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Debug executable 'read_kif_case'",
+            "name": "Debug executable 'read_kif'",
             "type": "lldb",
             "request": "launch",
             "cargo": {
                 "args": [
                     "run",
-                    "--bin=read_kif_case"
+                    "--bin=read_kif"
                 ]
             },
             "args": []
         },
         
         {
-            "name": "Debug unit tests in library 'read_kif_case'",
+            "name": "Debug unit tests in library 'read_kif'",
             "type": "lldb",
             "request": "launch",
-            "cwd": "C:\\work\\MyPrograming\\rust\\read_kif_case\\",
+            "cwd": "C:\\work\\MyPrograming\\rust\\read_kif\\",
             "cargo": {
                 "args": [
                     "test"

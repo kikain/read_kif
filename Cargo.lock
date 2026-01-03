@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "read_kif_case"
-version = "0.1.0"
+name = "read_kif"
+version = "0.1.2"

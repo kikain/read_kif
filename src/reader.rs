@@ -9,7 +9,7 @@ use std::{
 
 enum SepMoveRet {
     Board(Move),
-    Had(PieceEnum, Pos),
+    InHand(PieceEnum, Pos),
     Quit,
 }
 
@@ -109,7 +109,7 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
             }
         }
     }
-    // 例外で早期リターン(詰み,投了, ...etc)
+    // 例外で早期リターン(詰み,投了, .etc)
     let _ch = it_c.next().ok_or_else(|| NotFound(ToX, m_in))?;
     match _ch {
         '中' => {
@@ -229,7 +229,7 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
             it_c.next();
         }
         '打' => {
-            return Ok(SepMoveRet::Had(_piece, to));
+            return Ok(SepMoveRet::InHand(_piece, to));
         }
         '(' => (),
         '銀' | '桂' | '香' => {
@@ -239,14 +239,10 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
             return Err(Invalid(Decorator, m_in));
         }
     }
-    // 移動元
-    let from: MovePos;
-    {
-        from = MovePos::Board(Pos::new(
-            get_from_pos(&mut it_c, FromX, m_in)?,
-            get_from_pos(&mut it_c, FromY, m_in)?,
-        ));
-    }
+    let from = MovePos::Board(Pos::new(
+        get_from_pos(&mut it_c, FromX, m_in)?,
+        get_from_pos(&mut it_c, FromY, m_in)?,
+    ));
     Ok(SepMoveRet::Board(Move {
         from,
         to,
@@ -260,7 +256,7 @@ fn push_move_from_smr(smr: SepMoveRet, is_down: bool, prev_pos: &mut Pos, moves:
             *prev_pos = mo.to;
             moves.push(mo);
         }
-        SepMoveRet::Had(piece, to) => {
+        SepMoveRet::InHand(piece, to) => {
             let m = Move {
                 from: MovePos::Had(Piece::new_b(piece, is_down)),
                 to,
@@ -304,6 +300,9 @@ pub(crate) fn read_kif(path: &str, opt: &Opt) -> IoResult<(HashMap<String, Strin
     if last_line != MOVES_PREV {
         match sep_move(&last_line, prev_pos) {
             Ok(smr) => {
+                if let SepMoveRet::Quit = smr {
+                    return Ok((ret, moves));
+                }
                 push_move_from_smr(smr, is_down, &mut prev_pos, &mut moves);
             }
             Err(_) => {
@@ -314,8 +313,11 @@ pub(crate) fn read_kif(path: &str, opt: &Opt) -> IoResult<(HashMap<String, Strin
     for l_res in it {
         is_down = !is_down;
         let l = l_res?;
-        match sep_move(&l.trim_start(), prev_pos) {
+        match sep_move(&l, prev_pos) {
             Ok(smr) => {
+                if let SepMoveRet::Quit = smr {
+                    return Ok((ret, moves));
+                }
                 push_move_from_smr(smr, is_down, &mut prev_pos, &mut moves);
             }
             Err(_) => {
