@@ -24,12 +24,12 @@ pub enum MoveObj {
     Decorator,
 }
 
-pub enum SepMoveError<'a> {
-    Invalid(MoveObj, &'a str),
-    NotFound(MoveObj, &'a str),
+pub enum SepMoveError {
+    Invalid(MoveObj, String),
+    NotFound(MoveObj, String),
     Io(Box<std::io::Error>),
 }
-impl fmt::Display for SepMoveError<'_> {
+impl fmt::Display for SepMoveError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use SepMoveError::*;
         let str = match self {
@@ -40,7 +40,7 @@ impl fmt::Display for SepMoveError<'_> {
         write!(f, "{}", str)
     }
 }
-impl fmt::Debug for SepMoveError<'_> {
+impl fmt::Debug for SepMoveError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut ret = f.debug_struct("SepMoveError");
         ret.field("type", &self.to_string());
@@ -58,7 +58,7 @@ impl fmt::Debug for SepMoveError<'_> {
         ret.finish()
     }
 }
-impl std::error::Error for SepMoveError<'_> {}
+impl std::error::Error for SepMoveError {}
 
 pub struct Opt<'a> {
     pub sep: &'a str,
@@ -78,21 +78,21 @@ impl<'a> Opt<'a> {
     }
 }
 
-fn get_from_pos<'m_in>(
+fn get_from_pos(
     it: &mut impl Iterator<Item = char>,
     from: MoveObj,
-    m_in: &'m_in str,
-) -> Result<usize, SepMoveError<'m_in>> {
+    m_in: &str,
+) -> Result<usize, SepMoveError> {
     match it
         .next()
-        .ok_or_else(|| SepMoveError::NotFound(from, m_in))?
+        .ok_or_else(|| SepMoveError::NotFound(from, m_in.to_owned()))?
         .to_digit(10)
     {
         Some(val @ 1..=9) => Ok((val - 1) as usize),
-        _ => Err(SepMoveError::Invalid(from, m_in)),
+        _ => Err(SepMoveError::Invalid(from, m_in.to_owned())),
     }
 }
-fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
+fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError> {
     // 下準備
     use MoveObj::*;
     use SepMoveError::*;
@@ -105,12 +105,12 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
             }
             Some(_) => (),
             None => {
-                return Err(NotFound(MoveNum, m_in));
+                return Err(NotFound(MoveNum, m_in.to_owned()));
             }
         }
     }
     // 例外で早期リターン(詰み,投了, .etc)
-    let _ch = it_c.next().ok_or_else(|| NotFound(ToX, m_in))?;
+    let _ch = it_c.next().ok_or_else(|| NotFound(ToX, m_in.to_owned()))?;
     match _ch {
         '中' => {
             return Ok(SepMoveRet::Quit);
@@ -147,7 +147,7 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
     {
         match _ch {
             '▲' | '△' => {
-                let _ch = it_c.next().ok_or_else(|| NotFound(ToX, m_in));
+                let _ch = it_c.next().ok_or_else(|| NotFound(ToX, m_in.to_owned()));
             }
             c => {
                 let _ch = c;
@@ -165,10 +165,10 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
             '９' => 8,
             '同' => prev_pos.x,
             _ => {
-                return Err(Invalid(ToX, m_in));
+                return Err(Invalid(ToX, m_in.to_owned()));
             }
         };
-        let _ch = it_c.next().ok_or_else(|| NotFound(ToY, m_in))?;
+        let _ch = it_c.next().ok_or_else(|| NotFound(ToY, m_in.to_owned()))?;
         let y: usize = match _ch {
             '一' => 0,
             '二' => 1,
@@ -187,7 +187,7 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
                     _piece_ch = Some(c);
                     prev_pos.y
                 } else {
-                    return Err(Invalid(ToY, m_in));
+                    return Err(Invalid(ToY, m_in.to_owned()));
                 }
             }
         };
@@ -197,7 +197,9 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
     let _piece: PieceEnum;
     {
         let _ch = match _piece_ch {
-            None => it_c.next().ok_or_else(|| NotFound(Piece, m_in))?,
+            None => it_c
+                .next()
+                .ok_or_else(|| NotFound(Piece, m_in.to_owned()))?,
             Some(c) => c,
         };
         use PieceEnum::*;
@@ -216,13 +218,15 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
             }
             '全' | '圭' | '杏' | 'と' | '龍' | '竜' => Empty,
             _ => {
-                return Err(Invalid(Piece, m_in));
+                return Err(Invalid(Piece, m_in.to_owned()));
             }
         }
     }
     // 装飾子
     let mut do_promotion: bool = false;
-    let _ch = it_c.next().ok_or_else(|| NotFound(Decorator, m_in))?;
+    let _ch = it_c
+        .next()
+        .ok_or_else(|| NotFound(Decorator, m_in.to_owned()))?;
     match _ch {
         '成' => {
             do_promotion = true;
@@ -236,7 +240,7 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError<'_>> {
             it_c.next();
         }
         _ => {
-            return Err(Invalid(Decorator, m_in));
+            return Err(Invalid(Decorator, m_in.to_owned()));
         }
     }
     let from = MovePos::Board(Pos::new(
@@ -258,7 +262,7 @@ fn push_move_from_smr(smr: SepMoveRet, is_down: bool, prev_pos: &mut Pos, moves:
         }
         SepMoveRet::InHand(piece, to) => {
             let m = Move {
-                from: MovePos::Had(Piece::new_b(piece, is_down)),
+                from: MovePos::Had(Piece::new(piece, is_down, false)),
                 to,
                 do_promotion: false,
             };
@@ -266,6 +270,22 @@ fn push_move_from_smr(smr: SepMoveRet, is_down: bool, prev_pos: &mut Pos, moves:
             moves.push(m);
         }
         SepMoveRet::Quit => return,
+    }
+}
+/*
+共通処理: 1行分の指し手文字列を解析してmovesに追加する。
+true を返すと続行、false を返すと処理を中止（投了や解析エラー）する。
+*/
+fn process_move_line(m_in: &str, prev_pos: &mut Pos, is_down: bool, moves: &mut TKif) -> bool {
+    match sep_move(m_in, *prev_pos) {
+        Ok(smr) => {
+            if let SepMoveRet::Quit = smr {
+                return false;
+            }
+            push_move_from_smr(smr, is_down, prev_pos, moves);
+            true
+        }
+        Err(_) => false,
     }
 }
 const MOVES_PREV: &str = "手数----指手---------消費時間--";
@@ -298,31 +318,15 @@ pub(crate) fn read_kif(path: &str, opt: &Opt) -> IoResult<(HashMap<String, Strin
     let mut prev_pos = Pos::new(1, 1);
     let mut is_down = true;
     if last_line != MOVES_PREV {
-        match sep_move(&last_line, prev_pos) {
-            Ok(smr) => {
-                if let SepMoveRet::Quit = smr {
-                    return Ok((ret, moves));
-                }
-                push_move_from_smr(smr, is_down, &mut prev_pos, &mut moves);
-            }
-            Err(_) => {
-                return Ok((ret, moves));
-            }
+        if !process_move_line(&last_line, &mut prev_pos, is_down, &mut moves) {
+            return Ok((ret, moves));
         }
     }
     for l_res in it {
         is_down = !is_down;
         let l = l_res?;
-        match sep_move(&l, prev_pos) {
-            Ok(smr) => {
-                if let SepMoveRet::Quit = smr {
-                    return Ok((ret, moves));
-                }
-                push_move_from_smr(smr, is_down, &mut prev_pos, &mut moves);
-            }
-            Err(_) => {
-                return Ok((ret, moves));
-            }
+        if !process_move_line(&l, &mut prev_pos, is_down, &mut moves) {
+            return Ok((ret, moves));
         }
     }
     Ok((ret, moves))

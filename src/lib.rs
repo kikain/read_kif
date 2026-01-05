@@ -1,4 +1,5 @@
 mod reader;
+mod search;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub enum PieceEnum {
@@ -29,11 +30,22 @@ pub struct Piece {
     pub is_promoted: bool,
 }
 impl Piece {
+    const DEFAULT: Self = Self {
+        piece: PieceEnum::Empty,
+        is_down: false,
+        is_promoted: false,
+    };
     ///new func for initializing the Board
-    pub fn new_b(piece: PieceEnum, is_down: bool) -> Self {
-        Self::new(piece, is_down, false)
+    pub(self) const fn new_b(pieces: [PieceEnum; 9], is_down: bool) -> [Self; 9] {
+        let mut temp = [Self::new(PieceEnum::Empty, is_down, false); 9];
+        let mut i: usize = 1;
+        while i < 9 {
+            temp[i] = Self::new(pieces[i], is_down, false);
+            i += 1;
+        }
+        temp
     }
-    pub fn new(piece: PieceEnum, is_down: bool, is_promoted: bool) -> Self {
+    pub const fn new(piece: PieceEnum, is_down: bool, is_promoted: bool) -> Self {
         Piece {
             piece,
             is_down,
@@ -58,7 +70,7 @@ impl Pos {
         Pos { x, y }
     }
     ///self to MovePos
-    pub(crate) fn to_mp(&self) -> MovePos {
+    pub(crate) const fn to_mp(&self) -> MovePos {
         MovePos::Board(*self)
     }
 }
@@ -82,7 +94,7 @@ pub enum PM {
     Minus,
 }
 
-#[derive(Debug, Clone /*Copy,*/)]
+#[derive(Debug, Clone, Copy)]
 pub struct Had {
     pub king: u32,
     pub gold: u32,
@@ -108,6 +120,16 @@ impl Default for Had {
     }
 }
 impl Had {
+    const DEFAULT: Self = Had {
+        king: 0,
+        gold: 0,
+        silver: 0,
+        knight: 0,
+        spear: 0,
+        rook: 0,
+        bishop: 0,
+        pawn: 0,
+    };
     pub fn get(&self, key: PieceEnum) -> u32 {
         use PieceEnum::*;
         match key {
@@ -171,9 +193,9 @@ impl Default for Board {
 impl Clone for Board {
     fn clone(&self) -> Self {
         Board {
-            board: self.board.clone(),
-            has_down: self.has_down.clone(),
-            has_up: self.has_up.clone(),
+            board: self.board,
+            has_down: self.has_down,
+            has_up: self.has_up,
         }
     }
 }
@@ -188,62 +210,42 @@ impl Board {
             has_up: Had::default(),
         }
     }
-    pub fn normal() -> Self {
+    pub const fn normal() -> Self {
         use PieceEnum::*;
         Board {
             board: [
-                [
-                    Piece::new_b(Spear, false),
-                    Piece::new_b(Knight, false),
-                    Piece::new_b(Silver, false),
-                    Piece::new_b(Gold, false),
-                    Piece::new_b(King, false),
-                    Piece::new_b(Gold, false),
-                    Piece::new_b(Silver, false),
-                    Piece::new_b(Knight, false),
-                    Piece::new_b(Spear, false),
-                ],
-                [
-                    Piece::new_b(Empty, false),
-                    Piece::new_b(Rook, false),
-                    Piece::new_b(Empty, false),
-                    Piece::new_b(Empty, false),
-                    Piece::new_b(Empty, false),
-                    Piece::new_b(Empty, false),
-                    Piece::new_b(Empty, false),
-                    Piece::new_b(Bishop, false),
-                    Piece::new_b(Empty, false),
-                ],
-                [Piece::new_b(Pawn, false); 9],
-                [Piece::default(); 9],
-                [Piece::default(); 9],
-                [Piece::default(); 9],
-                [Piece::new_b(Pawn, true); 9],
-                [
-                    Piece::new_b(Empty, true),
-                    Piece::new_b(Rook, true),
-                    Piece::new_b(Empty, true),
-                    Piece::new_b(Empty, true),
-                    Piece::new_b(Empty, true),
-                    Piece::new_b(Empty, true),
-                    Piece::new_b(Empty, true),
-                    Piece::new_b(Bishop, true),
-                    Piece::new_b(Empty, true),
-                ],
-                [
-                    Piece::new_b(Spear, true),
-                    Piece::new_b(Knight, true),
-                    Piece::new_b(Silver, true),
-                    Piece::new_b(Gold, true),
-                    Piece::new_b(King, true),
-                    Piece::new_b(Gold, true),
-                    Piece::new_b(Silver, true),
-                    Piece::new_b(Knight, true),
-                    Piece::new_b(Spear, true),
-                ],
+                Piece::new_b(
+                    [
+                        Spear, Knight, Silver, Gold, King, Gold, Silver, Knight, Spear,
+                    ],
+                    false,
+                ),
+                Piece::new_b(
+                    [
+                        Empty, Rook, Empty, Empty, Empty, Empty, Empty, Bishop, Empty,
+                    ],
+                    false,
+                ),
+                [Piece::new(Pawn, false, false); 9],
+                [Piece::DEFAULT; 9],
+                [Piece::DEFAULT; 9],
+                [Piece::DEFAULT; 9],
+                [Piece::new(Pawn, true, false); 9],
+                Piece::new_b(
+                    [
+                        Empty, Rook, Empty, Empty, Empty, Empty, Empty, Bishop, Empty,
+                    ],
+                    true,
+                ),
+                Piece::new_b(
+                    [
+                        Spear, Knight, Silver, Gold, King, Gold, Silver, Knight, Spear,
+                    ],
+                    true,
+                ),
             ],
-            has_down: Had::default(),
-            has_up: Had::default(),
+            has_down: Had::DEFAULT,
+            has_up: Had::DEFAULT,
         }
     }
     pub fn next(&mut self, m: &Move) -> Self {
@@ -267,7 +269,7 @@ impl Board {
             has_up: self.has_up.clone(),
         }
     }
-    fn get(&self, pos: MovePos) -> Piece {
+    const fn get(&self, pos: MovePos) -> Piece {
         match pos {
             MovePos::Board(xy) => self.board[xy.x][xy.y],
             MovePos::Had(p) => p,
@@ -300,7 +302,7 @@ pub struct KifSearchPattern {
     pub(crate) had: Option<[Had; 2]>,
 }
 impl KifSearchPattern {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             rect: None,
             had: None,
