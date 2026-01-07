@@ -1,5 +1,5 @@
 mod reader;
-mod search;
+pub mod searcher;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub enum PieceEnum {
@@ -296,21 +296,14 @@ impl Board {
     }
     // さらに別のプリセットがあれば同様に関数を追加できます（compact(), handicap(), ...）
 }
-
-pub struct KifSearchPattern {
-    pub(crate) rect: Option<Vec<Vec<Piece>>>,
-    pub(crate) had: Option<[Had; 2]>,
-}
-impl KifSearchPattern {
-    pub const fn new() -> Self {
+impl From<TBoard> for Board {
+    fn from(board: TBoard) -> Self {
         Self {
-            rect: None,
-            had: None,
+            board,
+            ..Default::default()
         }
     }
 }
-
-pub type KifPat = KifSearchPattern;
 
 pub type TKif = Vec<Move>;
 pub struct Kif {
@@ -332,8 +325,8 @@ impl Kif {
         let (_options, moves) = reader::read_kif(path, &reader::Opt::default())?;
         Ok(Self::t_from_vec(moves))
     }
-    pub fn search(pat: KifSearchPattern) {
-        todo!("struct before")
+    pub fn search(pat: searcher::KifPat) {
+        searcher::search(pat);
     }
 }
 
