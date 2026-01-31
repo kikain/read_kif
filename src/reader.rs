@@ -31,11 +31,11 @@ pub enum SepMoveError {
 }
 impl fmt::Display for SepMoveError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use SepMoveError::*;
+        use self::SepMoveError::*;
         let str = match self {
-            Invalid(_, _) => "Invalid".to_string(),
-            NotFound(_, _) => "NotFound".to_string(),
-            Io(_) => "Io".to_string(),
+            Invalid(..) => "Invalid".to_string(),
+            NotFound(..) => "NotFound".to_string(),
+            Io(..) => "Io".to_string(),
         };
         write!(f, "{}", str)
     }
@@ -62,19 +62,19 @@ impl std::error::Error for SepMoveError {}
 
 pub struct Opt<'a> {
     pub sep: &'a str,
-    pub read_sec: Option<Vec<&'a str>>,
+    pub read_sect: Option<Vec<&'a str>>,
 }
 impl Default for Opt<'_> {
     fn default() -> Self {
         Self {
             sep: "：",
-            read_sec: None,
+            read_sect: None,
         }
     }
 }
 impl<'a> Opt<'a> {
     fn open_all(&self) -> (&'a str, Option<Vec<&'a str>>) {
-        (self.sep, self.read_sec.clone())
+        (self.sep, self.read_sect.clone())
     }
 }
 
@@ -94,9 +94,10 @@ fn get_from_pos(
 }
 fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError> {
     // 下準備
-    use MoveObj::*;
-    use SepMoveError::*;
+    use self::MoveObj::*;
+    use self::SepMoveError::*;
     let mut it_c: Chars<'_> = m_in.trim_start().chars();
+    // 手数の次の空白までスキップ
     it_c.next();
     loop {
         match it_c.next() {
@@ -230,7 +231,7 @@ fn sep_move(m_in: &str, prev_pos: Pos) -> Result<SepMoveRet, SepMoveError> {
     match _ch {
         '成' => {
             do_promotion = true;
-            it_c.next();
+            it_c.next(); // '('のスルー用
         }
         '打' => {
             return Ok(SepMoveRet::InHand(_piece, to));
@@ -289,7 +290,7 @@ fn process_move_line(m_in: &str, prev_pos: &mut Pos, is_down: bool, moves: &mut 
     }
 }
 const MOVES_PREV: &str = "手数----指手---------消費時間--";
-pub(crate) fn read_kif(path: &str, opt: &Opt) -> IoResult<(HashMap<String, String>, TKif)> {
+pub fn read_kif(path: &str, opt: &Opt) -> IoResult<(HashMap<String, String>, TKif)> {
     let (separator, read_sect) = opt.open_all();
     let mut ret: HashMap<String, String> = HashMap::<String, String>::new();
     let mut it = BufReader::new(File::open(path)?).lines();

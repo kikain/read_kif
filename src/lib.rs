@@ -1,7 +1,11 @@
-mod reader;
-pub mod searcher;
+pub mod reader;
+pub mod search;
 
-#[derive(Clone, Copy, Debug, Default)]
+pub use reader::read_kif;
+// Public API exports
+pub use reader::Opt;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum PieceEnum {
     #[default]
     Empty,
@@ -23,7 +27,7 @@ impl PieceEnum {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Piece {
     pub piece: PieceEnum,
     pub is_down: bool,
@@ -60,13 +64,9 @@ pub struct Pos {
     pub y: usize,
 }
 impl Pos {
-    pub fn new(x: usize, y: usize) -> Self {
-        if x > 8 {
-            panic!("x ranges from 0 to 8, but received {}", x);
-        }
-        if y > 8 {
-            panic!("y ranges from 0 to 8, but received {}", y);
-        }
+    pub const fn new(x: usize, y: usize) -> Self {
+        assert!(x <= 8, "x ranges from 0 to 8.");
+        assert!(y <= 8, "y ranges from 0 to 8.");
         Pos { x, y }
     }
     ///self to MovePos
@@ -88,11 +88,6 @@ pub struct Move {
     pub do_promotion: bool,
 }
 impl Move {}
-
-pub enum PM {
-    Plus,
-    Minus,
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Had {
@@ -130,7 +125,7 @@ impl Had {
         bishop: 0,
         pawn: 0,
     };
-    pub fn get(&self, key: PieceEnum) -> u32 {
+    pub const fn get(&self, key: PieceEnum) -> u32 {
         use PieceEnum::*;
         match key {
             Empty => panic!("had in not 'Empty'"),
@@ -147,22 +142,14 @@ impl Had {
     fn adjust_count(field: &mut u32, val: i32) {
         let tmp = *field as i64 + val as i64;
         if tmp < 0 {
-            panic!("attempt to set negative had count: {}", tmp);
+            panic!("attempt to set negative had count: {tmp}");
         }
         if tmp > u32::MAX as i64 {
-            panic!("attempt to overflow had count: {}", tmp);
+            panic!("attempt to overflow had count: {tmp}");
         }
         *field = tmp as u32;
     }
-    // Moves the specified number of frames up or down.
-    // You'll probably use it like this:
-    // ```rust
-    // let has = Had::default();
-    // has.inc(PieceEnum::Knight,+1);
-    // assert_eq!(has.get(PieceEnum::Knight),1)
-    // has.pawn = 2
-    // assert_
-    // ```
+
     pub fn inc(&mut self, key: PieceEnum, val: i32) {
         use PieceEnum::*;
         match key {
@@ -182,8 +169,8 @@ impl Had {
 pub type TBoard = [[Piece; 9]; 9];
 pub struct Board {
     pub board: TBoard,
-    pub has_down: Had,
-    pub has_up: Had,
+    pub had_down: Had,
+    pub had_up: Had,
 }
 impl Default for Board {
     fn default() -> Self {
@@ -194,20 +181,20 @@ impl Clone for Board {
     fn clone(&self) -> Self {
         Board {
             board: self.board,
-            has_down: self.has_down,
-            has_up: self.has_up,
+            had_down: self.had_down,
+            had_up: self.had_up,
         }
     }
 }
 impl Board {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self::normal()
     }
     pub fn empty() -> Self {
         Board {
             board: [[Piece::default(); 9]; 9],
-            has_down: Had::default(),
-            has_up: Had::default(),
+            had_down: Had::default(),
+            had_up: Had::default(),
         }
     }
     pub const fn normal() -> Self {
@@ -244,8 +231,8 @@ impl Board {
                     true,
                 ),
             ],
-            has_down: Had::DEFAULT,
-            has_up: Had::DEFAULT,
+            had_down: Had::DEFAULT,
+            had_up: Had::DEFAULT,
         }
     }
     pub fn next(&mut self, m: &Move) -> Self {
@@ -258,15 +245,15 @@ impl Board {
         if let PieceEnum::Empty = captured {
         } else {
             if moving.is_down {
-                self.has_down.inc(captured, 1);
+                self.had_down.inc(captured, 1);
             } else {
-                self.has_up.inc(captured, 1);
+                self.had_up.inc(captured, 1);
             }
         }
         Board {
             board: self.board,
-            has_down: self.has_down.clone(),
-            has_up: self.has_up.clone(),
+            had_down: self.had_down,
+            had_up: self.had_up,
         }
     }
     const fn get(&self, pos: MovePos) -> Piece {
@@ -287,14 +274,17 @@ impl Board {
                     1
                 };
                 if p.is_down {
-                    self.has_down.inc(p.piece, val);
+                    self.had_down.inc(p.piece, val);
                 } else {
-                    self.has_up.inc(p.piece, val);
+                    self.had_up.inc(p.piece, val);
                 }
             }
         }
     }
     // さらに別のプリセットがあれば同様に関数を追加できます（compact(), handicap(), ...）
+    pub fn search(&self, pat: search::KifPat) -> bool {
+        pat.search(self)
+    }
 }
 impl From<TBoard> for Board {
     fn from(board: TBoard) -> Self {
@@ -308,48 +298,74 @@ impl From<TBoard> for Board {
 pub type TKif = Vec<Move>;
 pub struct Kif {
     pub kif: TKif,
-    pub(crate) map: Board,
+    pub(crate) board: Board,
+    move_index: usize,
 }
 impl Kif {
     ///from_vec for test
     pub fn t_from_vec(kif: TKif) -> Self {
         Self {
             kif,
-            map: Board::normal(),
+            board: Board::normal(),
+            move_index: 0,
         }
     }
     pub fn with_board(kif: TKif, board: Board) -> Self {
-        Self { kif, map: board }
+        Self {
+            kif,
+            board,
+            move_index: 0,
+        }
     }
     pub fn new(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let (_options, moves) = reader::read_kif(path, &reader::Opt::default())?;
+        let (_options, moves) = read_kif(path, &Opt::default())?;
         Ok(Self::t_from_vec(moves))
     }
-    pub fn search(pat: searcher::KifPat) {
-        searcher::search(pat);
+    pub fn search(&self, pat: search::KifPat) -> bool {
+        pat.search(&self.board)
+    }
+    pub fn search_all(&self, pat: search::KifPat) -> Option<usize> {
+        let mut temp = self.board.clone();
+        if pat.search(&temp) {
+            return Some(0);
+        }
+        for (i, m) in self.kif.iter().enumerate() {
+            if pat.search(&temp.next(m)) {
+                return Some(i);
+            }
+        }
+        None
+    }
+    pub fn next(&mut self) -> Option<Board> {
+        self.move_index += 1;
+        Some(self.board.next(self.kif.get(self.move_index - 1)?))
+    }
+    pub fn get_from_index(&self, index: usize) -> Board {
+        let mut temp = Board::normal();
+        for m in self.kif.iter().take(index) {
+            temp.next(m);
+        }
+        temp
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::reader;
-    type TestRes<E> = Result<(), Box<E>>;
+    use crate::*;
 
+    type TestRes<E> = Result<(), Box<E>>;
     #[test]
     fn test_read() -> TestRes<dyn std::error::Error> {
-        let (_ops, kif) = reader::read_kif(r".\data\kif1.kif2", &reader::Opt::default())?;
-        println!("{:#?}", kif);
+        let (_ops, kif) = read_kif(r".\data\kif1.kif2", &Opt::default())?;
+        println!("{kif:#?}");
         Ok(())
     }
-
     #[test]
     fn had_inc_positive() {
         let mut h = Had::default();
         h.inc(PieceEnum::Knight, 1);
         assert_eq!(h.knight, 1);
     }
-
     #[test]
     fn had_inc_decrement() {
         let mut h = Had::default();
@@ -357,19 +373,29 @@ mod tests {
         h.inc(PieceEnum::Pawn, -1);
         assert_eq!(h.pawn, 1);
     }
-
     #[test]
     #[should_panic]
     fn had_inc_negative_panics() {
         let mut h = Had::default();
         h.inc(PieceEnum::Pawn, -1);
     }
-
     #[test]
     #[should_panic]
     fn had_inc_overflow_panics() {
         let mut h = Had::default();
         h.pawn = u32::MAX;
         h.inc(PieceEnum::Pawn, 1);
+    }
+    #[test]
+    fn search_normal() -> TestRes<dyn std::error::Error> {
+        use search::{KifPat, KifPatBoard};
+        let kif = Kif::new(r".\data\kif1.kif2")?;
+        let my_pat = KifPat::with_board(KifPatBoard::with_board(kif.get_from_index(25).board));
+        println!(
+            "{}",
+            kif.get_from_index(25) /*.unwrap_or_default()*/
+                .search(my_pat)
+        );
+        Ok(())
     }
 }
