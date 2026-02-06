@@ -292,7 +292,7 @@ fn process_move_line(m_in: &str, prev_pos: &mut Pos, is_down: bool, moves: &mut 
 const MOVES_PREV: &str = "手数----指手---------消費時間--";
 pub fn read_kif(path: &str, opt: &Opt) -> IoResult<(HashMap<String, String>, TKif)> {
     let (separator, read_sect) = opt.open_all();
-    let mut ret: HashMap<String, String> = HashMap::<String, String>::new();
+    let mut ret: HashMap<String, String> = HashMap::new();
     let mut it = BufReader::new(File::open(path)?).lines();
     let mut last_line: String = String::from("pass");
     for l_res in &mut it {
