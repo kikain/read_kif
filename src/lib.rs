@@ -19,7 +19,7 @@ pub enum PieceEnum {
     Pawn,
 }
 impl PieceEnum {
-    pub(crate) fn _get_piece_heads() -> [char; 15] {
+    pub(crate) fn get_piece_heads() -> [char; 15] {
         [
             '玉', '金', '銀', '桂', '香', '飛', '角', '歩', '成', '全', '圭', '杏', 'と', '龍',
             '竜',
