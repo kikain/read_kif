@@ -69,7 +69,7 @@ impl Pos {
         Pos { x, y }
     }
     ///self to MovePos
-    pub(crate) const fn to_mp(&self) -> MovePos {
+    pub(crate) const fn as_mp(&self) -> MovePos {
         MovePos::Board(*self)
     }
 }
@@ -80,7 +80,6 @@ pub enum MovePos {
     Had(Piece),
 }
 
-#[derive(Clone)]
 pub enum MoveFromStrErr {
     Parse(reader::ParseError),
     Quit,
@@ -259,7 +258,7 @@ impl Board {
         }
     }
     pub fn next(&mut self, m: &Move) -> Self {
-        let to_mp = m.to.to_mp();
+        let to_mp = m.to.as_mp();
         let from_mp = m.from;
         let captured = self.get(to_mp).piece;
         let moving = self.get(from_mp);

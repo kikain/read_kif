@@ -1,4 +1,5 @@
 use crate::{Move, MovePos, Piece, PieceEnum, Pos, TKif};
+use ::thiserror;
 use std::{collections::HashMap, fmt, fs::File, io};
 
 #[derive(Clone, PartialEq)]
@@ -24,61 +25,34 @@ impl fmt::Display for MoveObj {
     }
 }
 
-#[derive(Copy, Clone)]
-pub enum ParseErrorKind {
-    NotFound,
-    Invalid,
-    Io(io::ErrorKind),
-}
-impl From<io::ErrorKind> for ParseErrorKind {
-    fn from(value: io::ErrorKind) -> Self {
-        Self::Io(value)
-    }
-}
-impl From<ParseErrorKind> for io::ErrorKind {
-    fn from(value: ParseErrorKind) -> Self {
-        use ParseErrorKind as Kind;
-        match value {
-            Kind::NotFound => Self::NotFound,
-            Kind::Invalid => Self::InvalidData,
-            Kind::Io(kind) => kind,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct ParseError {
-    pub kind: ParseErrorKind,
+#[derive(thiserror::Error, Clone)]
+pub struct ParseErrorInfo {
+    pub kind: io::ErrorKind,
     pub obj: MoveObj,
     pub line: (usize, String),
 }
-impl fmt::Debug for ParseError {
+impl fmt::Debug for ParseErrorInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ParseMoveEData")
+        f.debug_struct("ParseErrorInfo")
+            .field("kind", &self.kind)
             .field("obj", &self.obj)
             .field("line_num", &self.line.0)
-            .field("line_str", &self.line.1)
+            .field("line_content", &self.line.1)
             .finish()
     }
 }
-impl fmt::Display for ParseError {
+impl fmt::Display for ParseErrorInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "A parse error occurred on line {}, type {}, content {} while parsing Move",
+            "Move文字列を解析中にエラーが発生ました(行数:{},対象:{},内容:{})",
             self.line.0, self.obj, self.line.1
         )
     }
 }
-impl std::error::Error for ParseError {}
-impl From<ParseError> for io::Error {
-    fn from(value: ParseError) -> Self {
-        Self::new(value.kind.into(), value)
-    }
-}
-impl ParseError {
+impl ParseErrorInfo {
     /// new for parse_move.
-    pub(self) fn new_parse(kind: ParseErrorKind, obj: MoveObj, content: String) -> Self {
+    pub(self) fn new_parser(kind: io::ErrorKind, obj: MoveObj, content: String) -> Self {
         Self {
             kind,
             obj,
@@ -90,7 +64,47 @@ impl ParseError {
         assert_eq!(self.line.0, 0);
         self.line.0 = line_num;
     }
+    /// add line_num and end
+    pub(self) fn finish(mut self, line_num: usize) -> Self {
+        self.add_line_num(line_num);
+        self
+    }
 }
+
+#[derive(thiserror::Error, Debug)]
+pub enum ParseError {
+    #[error("file open failed:{0}")]
+    Io(#[from] io::Error),
+    #[error(transparent)]
+    Parse(#[from] ParseErrorInfo),
+}
+impl From<ParseError> for io::Error {
+    fn from(value: ParseError) -> Self {
+        match value {
+            ParseError::Io(e) => e,
+            ParseError::Parse(info) => Self::new(info.kind, format!("{}", info)),
+        }
+    }
+}
+impl ParseError {
+    #[inline]
+    pub(self) fn new_parser(kind: io::ErrorKind, obj: MoveObj, content: String) -> Self {
+        Self::Parse(ParseErrorInfo::new_parser(kind, obj, content))
+    }
+    #[inline]
+    pub(self) fn add_line_num(&mut self, line_num: usize) {
+        let Self::Parse(info) = self else {
+            unreachable!()
+        };
+        info.add_line_num(line_num)
+    }
+    #[inline]
+    pub(self) fn finish(mut self, line_num: usize) -> Self {
+        self.add_line_num(line_num);
+        self
+    }
+}
+
 pub type ParseResult<T> = Result<T, ParseError>;
 
 fn get_from_pos(
@@ -98,19 +112,24 @@ fn get_from_pos(
     obj: MoveObj,
     m_in: &str,
 ) -> ParseResult<usize> {
-    use self::ParseErrorKind as Kind;
+    use io::ErrorKind as Kind;
     match it
         .next()
-        .ok_or_else(|| ParseError::new_parse(Kind::NotFound, obj, m_in.to_owned()))?
+        .ok_or_else(|| ParseError::new_parser(Kind::NotFound, obj, m_in.to_owned()))?
         .to_digit(10)
     {
         Some(val @ 1..=9) => Ok((val - 1) as usize),
-        _ => Err(ParseError::new_parse(Kind::Invalid, obj, m_in.to_owned())),
+        _ => Err(ParseError::new_parser(
+            Kind::InvalidData,
+            obj,
+            m_in.to_owned(),
+        )),
     }
 }
 pub(crate) fn parse_move(m_in: &str, prev_pos: Pos) -> ParseResult<ParsedMove> {
     // 下準備
-    use self::{MoveObj as Obj, ParseErrorKind as Kind};
+    use self::MoveObj as Obj;
+    use io::ErrorKind as Kind;
     const FULLWIDTH_SPACE: char = '　';
     let mut it = m_in.trim_start().chars().peekable();
     // 手数の次の空白までスキップ
@@ -124,7 +143,7 @@ pub(crate) fn parse_move(m_in: &str, prev_pos: Pos) -> ParseResult<ParsedMove> {
     {
         let _ch = it
             .peek()
-            .ok_or_else(|| ParseError::new_parse(Kind::NotFound, Obj::ToX, m_in.to_owned()))?;
+            .ok_or_else(|| ParseError::new_parser(Kind::NotFound, Obj::ToX, m_in.to_owned()))?;
         match _ch {
             '中' => {
                 return Ok(ParsedMove::Quit);
@@ -165,7 +184,7 @@ pub(crate) fn parse_move(m_in: &str, prev_pos: Pos) -> ParseResult<ParsedMove> {
     {
         let _ch = it
             .next()
-            .ok_or_else(|| ParseError::new_parse(Kind::NotFound, Obj::ToX, m_in.to_owned()))?;
+            .ok_or_else(|| ParseError::new_parser(Kind::NotFound, Obj::ToX, m_in.to_owned()))?;
         let x: usize = match _ch {
             '１' => 0,
             '２' => 1,
@@ -178,8 +197,8 @@ pub(crate) fn parse_move(m_in: &str, prev_pos: Pos) -> ParseResult<ParsedMove> {
             '９' => 8,
             '同' => prev_pos.x,
             _ => {
-                return Err(ParseError::new_parse(
-                    Kind::Invalid,
+                return Err(ParseError::new_parser(
+                    Kind::InvalidData,
                     Obj::ToX,
                     m_in.to_owned(),
                 ));
@@ -187,7 +206,7 @@ pub(crate) fn parse_move(m_in: &str, prev_pos: Pos) -> ParseResult<ParsedMove> {
         };
         let _ch = it
             .next()
-            .ok_or_else(|| ParseError::new_parse(Kind::NotFound, Obj::ToY, m_in.to_owned()))?;
+            .ok_or_else(|| ParseError::new_parser(Kind::NotFound, Obj::ToY, m_in.to_owned()))?;
         let y: usize = match _ch {
             '一' => 0,
             '二' => 1,
@@ -206,8 +225,8 @@ pub(crate) fn parse_move(m_in: &str, prev_pos: Pos) -> ParseResult<ParsedMove> {
                     _piece_ch = Some(c);
                     prev_pos.y
                 } else {
-                    return Err(ParseError::new_parse(
-                        Kind::Invalid,
+                    return Err(ParseError::new_parser(
+                        Kind::InvalidData,
                         Obj::ToY,
                         m_in.to_owned(),
                     ));
@@ -221,7 +240,7 @@ pub(crate) fn parse_move(m_in: &str, prev_pos: Pos) -> ParseResult<ParsedMove> {
     {
         let _ch = match _piece_ch {
             None => it.next().ok_or_else(|| {
-                ParseError::new_parse(Kind::NotFound, Obj::Piece, m_in.to_owned())
+                ParseError::new_parser(Kind::NotFound, Obj::Piece, m_in.to_owned())
             })?,
             Some(c) => c,
         };
@@ -241,8 +260,8 @@ pub(crate) fn parse_move(m_in: &str, prev_pos: Pos) -> ParseResult<ParsedMove> {
             }
             '全' | '圭' | '杏' | 'と' | '龍' | '竜' => Empty,
             _ => {
-                return Err(ParseError::new_parse(
-                    Kind::Invalid,
+                return Err(ParseError::new_parser(
+                    Kind::InvalidData,
                     Obj::Piece,
                     m_in.to_owned(),
                 ));
@@ -253,7 +272,7 @@ pub(crate) fn parse_move(m_in: &str, prev_pos: Pos) -> ParseResult<ParsedMove> {
     let mut do_promotion: bool = false;
     let _ch = it
         .next()
-        .ok_or_else(|| ParseError::new_parse(Kind::NotFound, Obj::Decorator, m_in.to_owned()))?;
+        .ok_or_else(|| ParseError::new_parser(Kind::NotFound, Obj::Decorator, m_in.to_owned()))?;
     match _ch {
         '成' => {
             do_promotion = true;
@@ -267,8 +286,8 @@ pub(crate) fn parse_move(m_in: &str, prev_pos: Pos) -> ParseResult<ParsedMove> {
             it.next();
         }
         _ => {
-            return Err(ParseError::new_parse(
-                Kind::Invalid,
+            return Err(ParseError::new_parser(
+                Kind::InvalidData,
                 Obj::Decorator,
                 m_in.to_owned(),
             ));
@@ -428,49 +447,11 @@ impl Opt {
     }
 }
 
-pub enum ReaderError {
-    Io(io::Error),
-    Parse(ParseError),
-}
-impl From<io::Error> for ReaderError {
-    fn from(value: io::Error) -> Self {
-        Self::Io(value)
-    }
-}
-impl From<ParseError> for ReaderError {
-    fn from(value: ParseError) -> Self {
-        Self::Parse(value)
-    }
-}
-macro_rules! delegate_fmt {
-    { $(impl ($trait:ty) for $name:ty : $($variant:ident),+$(,)? ;)+ } => {
-        $(
-            impl $trait for $name {
-                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                    match self {
-                        $(
-                        Self::$variant(err,..) => write!(f,"{}",err),
-                        )+
-                    }
-                }
-            }
-        )+
-    }
-}
-delegate_fmt! {
-    impl (fmt::Display) for ReaderError:Io,Parse;
-    impl (fmt::Debug) for ReaderError:Io,Parse;
-}
-
-impl std::error::Error for ReaderError {}
-
-pub fn read_kif(path: &str, opt: &Opt) -> Result<(HashMap<String, String>, TKif), ReaderError> {
+pub fn read_kif(path: &str, opt: &Opt) -> ParseResult<(HashMap<String, String>, TKif)> {
     use io::{BufRead, BufReader};
     const MOVES_PREV: &str = "手数----指手---------消費時間--";
     let (separator, read_sect) = opt.open_all();
-    let mut it = BufReader::new(File::open(path).map_err(ReaderError::from)?)
-        .lines()
-        .enumerate();
+    let mut it = BufReader::new(File::open(path)?).lines().enumerate();
     let mut ret: HashMap<String, String> = HashMap::new();
     let mut last_line: Option<String> = None;
     for (_line_num, l_res) in &mut it {
@@ -502,10 +483,9 @@ pub fn read_kif(path: &str, opt: &Opt) -> Result<(HashMap<String, String>, TKif)
     for (line_num, l_res) in it {
         is_down = !is_down;
         let l = l_res?;
-        if !process_move_line(&l, &mut prev_pos, &mut is_down, &mut moves).map_err(|mut e| {
-            e.add_line_num(line_num);
-            ReaderError::Parse(e)
-        })? {
+        if !process_move_line(&l, &mut prev_pos, &mut is_down, &mut moves)
+            .map_err(|e| e.finish(line_num))?
+        {
             return Ok((ret, moves));
         }
     }
