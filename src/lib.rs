@@ -1,11 +1,10 @@
 pub mod reader;
 pub mod search;
 
-pub use reader::read_kif;
 // Public API exports
-pub use reader::Opt;
+pub use crate::reader::{Opt, read_kif};
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
 pub enum PieceEnum {
     #[default]
     Empty,
@@ -58,7 +57,7 @@ impl Piece {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub struct Pos {
     pub x: usize,
     pub y: usize,
@@ -75,17 +74,41 @@ impl Pos {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-enum MovePos {
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum MovePos {
     Board(Pos),
     Had(Piece),
 }
 
-#[derive(Debug)]
+#[derive(Clone)]
+pub enum MoveFromStrErr {
+    Parse(reader::ParseError),
+    Quit,
+}
+
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct Move {
     pub(crate) from: MovePos,
     pub to: Pos,
     pub do_promotion: bool,
+}
+impl std::str::FromStr for Move {
+    type Err = MoveFromStrErr;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use reader::*;
+        match parse_move(s, Pos::new(0, 0)) {
+            Ok(p_m) => match p_m {
+                ParsedMove::Board(m) => Ok(m),
+                ParsedMove::InHand(piece, to) => Ok(Self {
+                    from: MovePos::Had(Piece::new(piece, false, false)),
+                    to,
+                    do_promotion: false,
+                }),
+                ParsedMove::Quit => Err(MoveFromStrErr::Quit),
+            },
+            Err(e) => Err(MoveFromStrErr::Parse(e)),
+        }
+    }
 }
 impl Move {}
 
@@ -318,7 +341,7 @@ impl Kif {
         }
     }
     pub fn new(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let (_options, moves) = read_kif(path, &Opt::default())?;
+        let (_options, moves) = read_kif(path, &Opt::DEFAULT)?;
         Ok(Self::t_from_vec(moves))
     }
     pub fn search(&self, pat: search::KifPat) -> bool {
@@ -356,7 +379,7 @@ mod tests {
     type TestRes<E> = Result<(), Box<E>>;
     #[test]
     fn test_read() -> TestRes<dyn std::error::Error> {
-        let (_ops, kif) = read_kif(r".\data\kif1.kif2", &Opt::default())?;
+        let (_ops, kif) = read_kif(r".\data\kif1.kif2", &Opt::DEFAULT)?;
         println!("{kif:#?}");
         Ok(())
     }

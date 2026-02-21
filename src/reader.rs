@@ -1,12 +1,8 @@
 use crate::{Move, MovePos, Piece, PieceEnum, Pos, TKif};
-use std::{
-    collections::HashMap,
-    fmt,
-    fs::File,
-    io::{self, Result as IoResult},
-};
+use std::{collections::HashMap, fmt, fs::File, io};
 
-enum ParsedMove {
+#[derive(Clone, PartialEq)]
+pub(crate) enum ParsedMove {
     Board(Move),
     InHand(PieceEnum, Pos),
     Quit,
@@ -32,16 +28,11 @@ impl fmt::Display for MoveObj {
 pub enum ParseErrorKind {
     NotFound,
     Invalid,
-    Other(io::ErrorKind),
+    Io(io::ErrorKind),
 }
 impl From<io::ErrorKind> for ParseErrorKind {
     fn from(value: io::ErrorKind) -> Self {
-        use io::ErrorKind as Kind;
-        match value {
-            Kind::NotFound => Self::NotFound,
-            Kind::InvalidData => Self::Invalid,
-            other => Self::Other(other),
-        }
+        Self::Io(value)
     }
 }
 impl From<ParseErrorKind> for io::ErrorKind {
@@ -50,15 +41,16 @@ impl From<ParseErrorKind> for io::ErrorKind {
         match value {
             Kind::NotFound => Self::NotFound,
             Kind::Invalid => Self::InvalidData,
-            Kind::Other(kind) => kind,
+            Kind::Io(kind) => kind,
         }
     }
 }
 
+#[derive(Clone)]
 pub struct ParseError {
-    kind: ParseErrorKind,
-    obj: MoveObj,
-    line: (usize, String),
+    pub kind: ParseErrorKind,
+    pub obj: MoveObj,
+    pub line: (usize, String),
 }
 impl fmt::Debug for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -73,7 +65,7 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "A parse error occurred on line {}, type {}, content {} while parsing Move.",
+            "A parse error occurred on line {}, type {}, content {} while parsing Move",
             self.line.0, self.obj, self.line.1
         )
     }
@@ -94,31 +86,13 @@ impl ParseError {
         }
     }
     /// add line_num for read_kif.(for output)
-    pub(self) fn finish(mut self, line_num: usize) -> io::Error {
+    pub(self) fn add_line_num(&mut self, line_num: usize) {
         assert_eq!(self.line.0, 0);
         self.line.0 = line_num;
-        self.into()
     }
 }
-type ParseResult<T> = Result<T, ParseError>;
+pub type ParseResult<T> = Result<T, ParseError>;
 
-pub struct Opt<'a> {
-    pub sep: &'static str,
-    pub read_sect: Option<Vec<&'a str>>,
-}
-impl Default for Opt<'_> {
-    fn default() -> Self {
-        Self {
-            sep: "：",
-            read_sect: None,
-        }
-    }
-}
-impl<'a> Opt<'a> {
-    fn open_all(&self) -> (&'static str, Option<Vec<&'a str>>) {
-        (self.sep, self.read_sect.clone())
-    }
-}
 fn get_from_pos(
     it: &mut impl Iterator<Item = char>,
     obj: MoveObj,
@@ -134,7 +108,7 @@ fn get_from_pos(
         _ => Err(ParseError::new_parse(Kind::Invalid, obj, m_in.to_owned())),
     }
 }
-fn parse_move(m_in: &str, prev_pos: Pos) -> ParseResult<ParsedMove> {
+pub(crate) fn parse_move(m_in: &str, prev_pos: Pos) -> ParseResult<ParsedMove> {
     // 下準備
     use self::{MoveObj as Obj, ParseErrorKind as Kind};
     const FULLWIDTH_SPACE: char = '　';
@@ -311,24 +285,6 @@ fn parse_move(m_in: &str, prev_pos: Pos) -> ParseResult<ParsedMove> {
     }))
 }
 
-fn push_move_from_smr(smr: ParsedMove, is_down: bool, prev_pos: &mut Pos, moves: &mut TKif) {
-    match smr {
-        ParsedMove::Board(mo) => {
-            *prev_pos = mo.to;
-            moves.push(mo);
-        }
-        ParsedMove::InHand(piece, to) => {
-            let m = Move {
-                from: MovePos::Had(Piece::new(piece, is_down, false)),
-                to,
-                do_promotion: false,
-            };
-            *prev_pos = m.to;
-            moves.push(m);
-        }
-        ParsedMove::Quit => return,
-    }
-}
 /*
 共通処理: 1行分の指し手文字列を解析してmovesに追加する。
 true を返すと続行、false を返すと処理を中止（投了や解析エラー）する。
@@ -336,60 +292,220 @@ true を返すと続行、false を返すと処理を中止（投了や解析エ
 fn process_move_line(
     m_in: &str,
     prev_pos: &mut Pos,
-    is_down: bool,
+    is_down: &mut bool,
     moves: &mut TKif,
 ) -> ParseResult<bool> {
-    match parse_move(m_in, *prev_pos) {
-        Ok(smr) => {
-            if let ParsedMove::Quit = smr {
-                return Ok(false);
-            }
-            push_move_from_smr(smr, is_down, prev_pos, moves);
-            Ok(true)
-        }
-        Err(e) => Err(e),
+    let smr = parse_move(m_in, *prev_pos)?;
+    let m: Move = match smr {
+        ParsedMove::Board(m) => m,
+        ParsedMove::InHand(piece, to) => Move {
+            from: MovePos::Had(Piece::new(piece, *is_down, false)),
+            to,
+            do_promotion: false,
+        },
+        ParsedMove::Quit => return Ok(false),
+    };
+    *prev_pos = m.to;
+    moves.push(m);
+    *is_down = !*is_down;
+    Ok(true)
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct KifSectFlags(u32);
+impl KifSectFlags {
+    /// 開始日時/対局日
+    pub const BEGIN_TIME: Self = Self(1);
+    /// 終了日時
+    pub const ENDT_IME: Self = Self(1 << 1);
+    /// 棋戦
+    pub const MATCH_TYPE: Self = Self(1 << 2);
+    /// 戦型
+    pub const BATTLE_TYPE: Self = Self(1 << 3);
+    /// 表題
+    pub const TITLE: Self = Self(1 << 4);
+    /// 持ち時間
+    pub const TIME_ALLOWED: Self = Self(1 << 5);
+    /// 秒読み
+    pub const COUNT_DOWN_PASE: Self = Self(1 << 6);
+    /// 消費時間
+    pub const TIME_CONSUMED: Self = Self(1 << 7);
+    /// 場所
+    pub const PLACE: Self = Self(1 << 8);
+    /// 掲載
+    pub const PUBLISH: Self = Self(1 << 9);
+    /// 備考
+    pub const REMARK: Self = Self(1 << 10);
+    /// 先手省略名
+    pub const FIRST_MOVE_ABBREVIATION: Self = Self(1 << 11);
+    /// 後手省略名
+    pub const BLACK_PLAYER_ABBREVIATION: Self = Self(1 << 12);
+    /// 記録係
+    pub const RECORDER: Self = Self(1 << 13);
+    /// そのほか(自作)
+    pub const ELSE: Self = Self(0);
+    /// すべて
+    pub const ALL: Self = Self(0b11111111111111);
+    pub const DEFAULT: Self = Self(0);
+}
+impl KifSectFlags {
+    pub fn is_true_str(&self, target: &str) -> bool {
+        let temp: Self = target.into();
+        (*self & temp).0 != 0
     }
 }
-const MOVES_PREV: &str = "手数----指手---------消費時間--";
-pub fn read_kif(path: &str, opt: &Opt) -> IoResult<(HashMap<String, String>, TKif)> {
+impl From<&str> for KifSectFlags {
+    fn from(value: &str) -> Self {
+        match value {
+            "開始日時" | "対局日" => Self::BEGIN_TIME,
+            "終了日時" => Self::ENDT_IME,
+            "棋戦" => Self::MATCH_TYPE,
+            "戦型" => Self::BATTLE_TYPE,
+            "表題" => Self::TITLE,
+            "持ち時間" => Self::TIME_ALLOWED,
+            "秒読み" => Self::COUNT_DOWN_PASE,
+            "消費時間" => Self::TIME_CONSUMED,
+            "場所" => Self::PLACE,
+            "掲載" => Self::PUBLISH,
+            "備考" => Self::REMARK,
+            "先手省略名" => Self::FIRST_MOVE_ABBREVIATION,
+            "後手省略名" => Self::BLACK_PLAYER_ABBREVIATION,
+            "記録係" => Self::RECORDER,
+            _ => Self::ELSE,
+        }
+    }
+}
+macro_rules! impl_flags {
+    ($name:ty) => {
+        impl ::std::ops::BitOr for $name {
+            type Output = Self;
+            fn bitor(self, rhs: Self) -> Self::Output {
+                Self(self.0 | rhs.0)
+            }
+        }
+        impl ::std::ops::BitOrAssign for $name {
+            fn bitor_assign(&mut self, rhs: Self) {
+                *self = Self(self.0 | rhs.0)
+            }
+        }
+        impl ::std::ops::BitAnd for $name {
+            type Output = Self;
+            fn bitand(self, rhs: Self) -> Self::Output {
+                Self(self.0 & rhs.0)
+            }
+        }
+        impl ::std::ops::BitAndAssign for $name {
+            fn bitand_assign(&mut self, rhs: Self) {
+                *self = Self(self.0 & rhs.0)
+            }
+        }
+        impl ::std::ops::BitXor for $name {
+            type Output = Self;
+            fn bitxor(self, rhs: Self) -> Self::Output {
+                Self(self.0 ^ rhs.0)
+            }
+        }
+        impl ::std::ops::BitXorAssign for $name {
+            fn bitxor_assign(&mut self, rhs: Self) {
+                *self = Self(self.0 ^ rhs.0)
+            }
+        }
+    };
+}
+impl_flags!(KifSectFlags);
+
+pub struct Opt {
+    separator: &'static str,
+    read_sect: KifSectFlags,
+}
+impl Opt {
+    pub const DEFAULT: Self = Self {
+        separator: "：",
+        read_sect: KifSectFlags::ELSE,
+    };
+    pub const fn open_all(&self) -> (&'static str, KifSectFlags) {
+        (self.separator, self.read_sect)
+    }
+}
+
+pub enum ReaderError {
+    Io(io::Error),
+    Parse(ParseError),
+}
+impl From<io::Error> for ReaderError {
+    fn from(value: io::Error) -> Self {
+        Self::Io(value)
+    }
+}
+impl From<ParseError> for ReaderError {
+    fn from(value: ParseError) -> Self {
+        Self::Parse(value)
+    }
+}
+macro_rules! delegate_fmt {
+    { $(impl ($trait:ty) for $name:ty : $($variant:ident),+$(,)? ;)+ } => {
+        $(
+            impl $trait for $name {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                    match self {
+                        $(
+                        Self::$variant(err,..) => write!(f,"{}",err),
+                        )+
+                    }
+                }
+            }
+        )+
+    }
+}
+delegate_fmt! {
+    impl (fmt::Display) for ReaderError:Io,Parse;
+    impl (fmt::Debug) for ReaderError:Io,Parse;
+}
+
+impl std::error::Error for ReaderError {}
+
+pub fn read_kif(path: &str, opt: &Opt) -> Result<(HashMap<String, String>, TKif), ReaderError> {
     use io::{BufRead, BufReader};
+    const MOVES_PREV: &str = "手数----指手---------消費時間--";
     let (separator, read_sect) = opt.open_all();
+    let mut it = BufReader::new(File::open(path).map_err(ReaderError::from)?)
+        .lines()
+        .enumerate();
     let mut ret: HashMap<String, String> = HashMap::new();
-    let mut it = BufReader::new(File::open(path)?).lines().enumerate();
-    let mut last_line: String = String::from("pass");
-    for (_, l_res) in &mut it {
+    let mut last_line: Option<String> = None;
+    for (_line_num, l_res) in &mut it {
         let l = l_res?;
-        if l.starts_with(MOVES_PREV) || l.trim_start().starts_with("1") {
-            last_line = l;
+        if l.starts_with(MOVES_PREV) {
+            break;
+        }
+        if l.trim_start().starts_with("1") {
+            last_line = Some(l);
             break;
         }
         if l.starts_with("#") {
             continue;
         }
-        if let Some(sections) = read_sect.as_ref() {
-            if !sections.iter().any(|item| l.starts_with(item)) {
-                continue;
+        if let Some((k, v)) = l.split_once(separator) {
+            if read_sect.is_true_str(k) {
+                ret.insert(k.into(), v.into());
             }
-        } else {
-            continue;
         }
-        let (k, v) = l.split_once(separator).unwrap_or_default();
-        ret.insert(k.to_string(), v.to_string());
     }
     let mut moves: TKif = Vec::new();
     let mut prev_pos = Pos::new(1, 1);
     let mut is_down = true;
-    if last_line != MOVES_PREV {
-        if !process_move_line(&last_line, &mut prev_pos, is_down, &mut moves)? {
+    if let Some(line) = last_line {
+        if !process_move_line(&line, &mut prev_pos, &mut is_down, &mut moves)? {
             return Ok((ret, moves));
         }
     }
     for (line_num, l_res) in it {
         is_down = !is_down;
         let l = l_res?;
-        if !process_move_line(&l, &mut prev_pos, is_down, &mut moves)
-            .map_err(|e| e.finish(line_num))?
-        {
+        if !process_move_line(&l, &mut prev_pos, &mut is_down, &mut moves).map_err(|mut e| {
+            e.add_line_num(line_num);
+            ReaderError::Parse(e)
+        })? {
             return Ok((ret, moves));
         }
     }
@@ -447,8 +563,8 @@ mod tests {
     fn process_move_line_appends_and_updates_prev() {
         let mut prev = Pos::new(0, 0);
         let mut moves: TKif = Vec::new();
-        let cont =
-            process_move_line("1 ７六歩(77)", &mut prev, true, &mut moves).expect("process failed");
+        let cont = process_move_line("1 ７六歩(77)", &mut prev, &mut true, &mut moves)
+            .expect("process failed");
         assert!(cont);
         assert_eq!(moves.len(), 1);
         assert_eq!(prev.x, 6);
