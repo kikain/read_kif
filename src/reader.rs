@@ -1,4 +1,5 @@
 use crate::{Move, MovePos, Piece, PieceEnum, Pos, TKif};
+use ::bitflags::bitflags;
 use ::thiserror;
 use std::{collections::HashMap, fmt, fs::File, io};
 
@@ -50,26 +51,6 @@ impl fmt::Display for ParseErrorInfo {
         )
     }
 }
-impl ParseErrorInfo {
-    /// new for parse_move.
-    pub(self) fn new_parser(kind: io::ErrorKind, obj: MoveObj, content: String) -> Self {
-        Self {
-            kind,
-            obj,
-            line: (0, content),
-        }
-    }
-    /// add line_num for read_kif.(for output)
-    pub(self) fn add_line_num(&mut self, line_num: usize) {
-        assert_eq!(self.line.0, 0);
-        self.line.0 = line_num;
-    }
-    /// add line_num and end
-    pub(self) fn finish(mut self, line_num: usize) -> Self {
-        self.add_line_num(line_num);
-        self
-    }
-}
 
 #[derive(thiserror::Error, Debug)]
 pub enum ParseError {
@@ -89,18 +70,19 @@ impl From<ParseError> for io::Error {
 impl ParseError {
     #[inline]
     pub(self) fn new_parser(kind: io::ErrorKind, obj: MoveObj, content: String) -> Self {
-        Self::Parse(ParseErrorInfo::new_parser(kind, obj, content))
-    }
-    #[inline]
-    pub(self) fn add_line_num(&mut self, line_num: usize) {
-        let Self::Parse(info) = self else {
-            unreachable!()
-        };
-        info.add_line_num(line_num)
+        Self::Parse(ParseErrorInfo {
+            kind,
+            obj,
+            line: (0, content),
+        })
     }
     #[inline]
     pub(self) fn finish(mut self, line_num: usize) -> Self {
-        self.add_line_num(line_num);
+        let Self::Parse(ref mut info) = self else {
+            unreachable!()
+        };
+        assert_eq!(info.line.0, 0);
+        info.line.0 = line_num;
         self
     }
 }
@@ -330,47 +312,48 @@ fn process_move_line(
     Ok(true)
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub struct KifSectFlags(u32);
-impl KifSectFlags {
-    /// 開始日時/対局日
-    pub const BEGIN_TIME: Self = Self(1);
-    /// 終了日時
-    pub const ENDT_IME: Self = Self(1 << 1);
-    /// 棋戦
-    pub const MATCH_TYPE: Self = Self(1 << 2);
-    /// 戦型
-    pub const BATTLE_TYPE: Self = Self(1 << 3);
-    /// 表題
-    pub const TITLE: Self = Self(1 << 4);
-    /// 持ち時間
-    pub const TIME_ALLOWED: Self = Self(1 << 5);
-    /// 秒読み
-    pub const COUNT_DOWN_PASE: Self = Self(1 << 6);
-    /// 消費時間
-    pub const TIME_CONSUMED: Self = Self(1 << 7);
-    /// 場所
-    pub const PLACE: Self = Self(1 << 8);
-    /// 掲載
-    pub const PUBLISH: Self = Self(1 << 9);
-    /// 備考
-    pub const REMARK: Self = Self(1 << 10);
-    /// 先手省略名
-    pub const FIRST_MOVE_ABBREVIATION: Self = Self(1 << 11);
-    /// 後手省略名
-    pub const BLACK_PLAYER_ABBREVIATION: Self = Self(1 << 12);
-    /// 記録係
-    pub const RECORDER: Self = Self(1 << 13);
-    /// そのほか(自作)
-    pub const ELSE: Self = Self(0);
-    /// すべて
-    pub const ALL: Self = Self(0b11111111111111);
-    pub const DEFAULT: Self = Self(0);
+bitflags! {
+    #[derive(Clone,Copy)]
+    pub struct KifSectFlags: u32 {
+        /// 開始日時/対局日
+        const BEGIN_TIME = 1;
+        /// 終了日時
+        const ENDT_IME = 1 << 1;
+        /// 棋戦
+        const MATCH_TYPE = 1 << 2;
+        /// 戦型
+        const BATTLE_TYPE = 1 << 3;
+        /// 表題
+        const TITLE = 1 << 4;
+        /// 持ち時間
+        const TIME_ALLOWED = 1 << 5;
+        /// 秒読み
+        const COUNT_DOWN_PASE = 1 << 6;
+        /// 消費時間
+        const TIME_CONSUMED = 1 << 7;
+        /// 場所
+        const PLACE = 1 << 8;
+        /// 掲載
+        const PUBLISH = 1 << 9;
+        /// 備考
+        const REMARK = 1 << 10;
+        /// 先手省略名
+        const FIRST_MOVE_ABBREVIATION = 1 << 11;
+        /// 後手省略名
+        const BLACK_PLAYER_ABBREVIATION = 1 << 12;
+        /// 記録係
+        const RECORDER = 1 << 13;
+        /// そのほか(自作
+        const ELSE = 0;
+        /// すべて
+        const ALL = !0;
+        const DEFAULT = 0;
+    }
 }
 impl KifSectFlags {
     pub fn is_true_str(&self, target: &str) -> bool {
         let temp: Self = target.into();
-        (*self & temp).0 != 0
+        (*self & temp).bits() != 0
     }
 }
 impl From<&str> for KifSectFlags {
@@ -394,44 +377,6 @@ impl From<&str> for KifSectFlags {
         }
     }
 }
-macro_rules! impl_flags {
-    ($name:ty) => {
-        impl ::std::ops::BitOr for $name {
-            type Output = Self;
-            fn bitor(self, rhs: Self) -> Self::Output {
-                Self(self.0 | rhs.0)
-            }
-        }
-        impl ::std::ops::BitOrAssign for $name {
-            fn bitor_assign(&mut self, rhs: Self) {
-                *self = Self(self.0 | rhs.0)
-            }
-        }
-        impl ::std::ops::BitAnd for $name {
-            type Output = Self;
-            fn bitand(self, rhs: Self) -> Self::Output {
-                Self(self.0 & rhs.0)
-            }
-        }
-        impl ::std::ops::BitAndAssign for $name {
-            fn bitand_assign(&mut self, rhs: Self) {
-                *self = Self(self.0 & rhs.0)
-            }
-        }
-        impl ::std::ops::BitXor for $name {
-            type Output = Self;
-            fn bitxor(self, rhs: Self) -> Self::Output {
-                Self(self.0 ^ rhs.0)
-            }
-        }
-        impl ::std::ops::BitXorAssign for $name {
-            fn bitxor_assign(&mut self, rhs: Self) {
-                *self = Self(self.0 ^ rhs.0)
-            }
-        }
-    };
-}
-impl_flags!(KifSectFlags);
 
 pub struct Opt {
     separator: &'static str,
