@@ -7,13 +7,9 @@ pub enum KifPatPiece {
 }
 impl PartialEq<Piece> for KifPatPiece {
     fn eq(&self, other: &Piece) -> bool {
-        if let KifPatPiece::Ignore = self {
-            true
-        } else {
-            let KifPatPiece::Handle(self_p) = *self else {
-                unreachable!("I previously checked self==KifPatPiece::Ignore but found it here")
-            };
-            &self_p == other
+        match self {
+            Self::Ignore => true,
+            Self::Handle(piece) => *piece == *other,
         }
     }
 }
@@ -41,12 +37,11 @@ impl Rect {
         }
     }
     pub const fn is_inside(&self, x: u32, y: u32) -> bool {
-        if self.start.0 <= x && x <= self.start.0 + self.range.0 {
-            if self.start.1 <= y && y <= self.start.1 + self.range.1 {
-                return true;
-            }
+        if self.is_inside_x(x) && self.is_inside_y(y) {
+            true
+        } else {
+            false
         }
-        false
     }
     pub const fn is_inside_x(&self, val: u32) -> bool {
         if self.start.0 <= val && val <= self.start.0 + self.range.0 {
@@ -151,17 +146,15 @@ impl KifPatBoard {
         true
     }
     pub fn search(&self, target: TBoard) -> bool {
-        if self.some_start.0 == 9 && self.some_start.1 == 9 {
-            true
-        } else {
-            if self.board[self.some_start.0][self.some_start.1]
-                != target[self.some_start.0][self.some_start.1]
-            {
-                false
-            } else {
-                self.search_all(target)
-            }
+        if self.some_start == (9, 9) {
+            return true;
         }
+        if self.board[self.some_start.0][self.some_start.1]
+            != target[self.some_start.0][self.some_start.1]
+        {
+            return false;
+        }
+        self.search_all(target)
     }
 }
 

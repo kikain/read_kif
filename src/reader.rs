@@ -442,15 +442,15 @@ impl Opt {
         separator: "：",
         read_sect: KifSectFlags::ELSE,
     };
-    pub const fn open_all(&self) -> (&'static str, KifSectFlags) {
+    pub const fn unwrap(self) -> (&'static str, KifSectFlags) {
         (self.separator, self.read_sect)
     }
 }
 
-pub fn read_kif(path: &str, opt: &Opt) -> ParseResult<(HashMap<String, String>, TKif)> {
+pub fn read_kif(path: &str, opt: Opt) -> ParseResult<(HashMap<String, String>, TKif)> {
     use io::{BufRead, BufReader};
     const MOVES_PREV: &str = "手数----指手---------消費時間--";
-    let (separator, read_sect) = opt.open_all();
+    let (separator, read_sect) = opt.unwrap();
     let mut it = BufReader::new(File::open(path)?).lines().enumerate();
     let mut ret: HashMap<String, String> = HashMap::new();
     let mut last_line: Option<String> = None;

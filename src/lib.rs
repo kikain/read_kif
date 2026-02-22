@@ -2,7 +2,7 @@ pub mod reader;
 pub mod search;
 
 // Public API exports
-pub use crate::reader::{Opt, read_kif};
+pub use crate::reader::{Opt, ParseError, read_kif};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
 pub enum PieceEnum {
@@ -81,7 +81,7 @@ pub enum MovePos {
 }
 
 pub enum MoveFromStrErr {
-    Parse(reader::ParseError),
+    Parse(ParseError),
     Quit,
 }
 
@@ -339,8 +339,8 @@ impl Kif {
             move_index: 0,
         }
     }
-    pub fn new(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let (_options, moves) = read_kif(path, &Opt::DEFAULT)?;
+    pub fn new(path: &str) -> Result<Self, ParseError> {
+        let (_options, moves) = read_kif(path, Opt::DEFAULT)?;
         Ok(Self::t_from_vec(moves))
     }
     pub fn search(&self, pat: search::KifPat) -> bool {
@@ -378,7 +378,7 @@ mod tests {
     type TestRes<E> = Result<(), Box<E>>;
     #[test]
     fn test_read() -> TestRes<dyn std::error::Error> {
-        let (_ops, kif) = read_kif(r".\data\kif1.kif2", &Opt::DEFAULT)?;
+        let (_ops, kif) = read_kif(r".\data\kif1.kif2", Opt::DEFAULT)?;
         println!("{kif:#?}");
         Ok(())
     }
