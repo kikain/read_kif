@@ -1,7 +1,7 @@
 use crate::{Move, MovePos, Piece, PieceEnum, Pos, TKif};
-use ::bitflags::bitflags;
-use ::thiserror;
+use bitflags::bitflags;
 use std::{collections::HashMap, fmt, fs::File, io};
+use thiserror;
 
 #[derive(Clone, PartialEq)]
 pub(crate) enum ParsedMove {
