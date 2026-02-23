@@ -30,7 +30,7 @@ dependencies = [
 name = "read_kif"
 version = "0.1.2"
 dependencies = [
-    "bitflags",
+ "bitflags",
  "thiserror",
 ]
 
