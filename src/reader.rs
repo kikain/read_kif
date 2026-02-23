@@ -385,10 +385,15 @@ pub struct Opt {
 impl Opt {
     pub const DEFAULT: Self = Self {
         separator: "：",
-        read_sect: KifSectFlags::ELSE,
+        read_sect: KifSectFlags::empty(),
     };
     pub const fn unwrap(self) -> (&'static str, KifSectFlags) {
         (self.separator, self.read_sect)
+    }
+}
+impl Default for Opt {
+    fn default() -> Self {
+        Self::DEFAULT
     }
 }
 
@@ -500,5 +505,41 @@ mod tests {
     fn parse_invalid_returns_err() {
         let prev = Pos::new(0, 0);
         assert!(parse_move("1 @@@", prev).is_err());
+    }
+    use std::fs;
+    use std::path::PathBuf;
+    fn tmp_path(name: &str) -> PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(name);
+        p
+    }
+
+    #[test]
+    fn test_read_kif_valid() {
+        let path = tmp_path("read_kif_test_valid.kif");
+        let content = "1 ７六歩(77)\n";
+        fs::write(&path, content).expect("write temp kif");
+        let (_hdr, moves) = read_kif(path.to_str().unwrap(), Opt::default()).expect("should parse");
+        assert_eq!(moves.len(), 1);
+        let m = &moves[0];
+        assert_eq!(m.to.x, 6);
+        assert_eq!(m.to.y, 5);
+        // cleanup
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_read_kif_invalid() {
+        let path = tmp_path("read_kif_test_invalid.kif");
+        let content = "1 ９X歩(77)\n"; // invalid y char 'X'
+        fs::write(&path, content).expect("write temp kif");
+        let res = read_kif(path.to_str().unwrap(), Opt::default());
+        assert!(res.is_err());
+        match res {
+            Err(ParseError::Parse { .. }) => (),
+            Err(e) => panic!("expected Parse error, got: {:?}", e),
+            Ok(_) => panic!("unexpected ok"),
+        }
+        let _ = fs::remove_file(&path);
     }
 }
